@@ -14,15 +14,24 @@ class APIKeyMiddleware:
         self.app = app
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
-            headers = dict((k.decode().lower(), v.decode()) for k, v in scope["headers"])
-            api_key = headers.get("x-api-key")
-            if api_key != API_KEY:
+            headers = {k.decode().lower(): v.decode() for k, v in scope["headers"]}
+            auth_header = headers.get("authorization")
+
+            # Expecting format: "Bearer <API_KEY>"
+            if not auth_header or not auth_header.startswith("Bearer "):
                 from starlette.responses import JSONResponse
-                response = JSONResponse({"detail": "Invalid or missing API Key"}, status_code=401)
+                response = JSONResponse({"detail": "Missing or invalid Authorization header"}, status_code=401)
                 await response(scope, receive, send)
                 return
-        await self.app(scope, receive, send)
 
+            token = auth_header.split("Bearer ")[-1].strip()
+            if token != API_KEY:
+                from starlette.responses import JSONResponse
+                response = JSONResponse({"detail": "Invalid API Key"}, status_code=401)
+                await response(scope, receive, send)
+                return
+
+        await self.app(scope, receive, send)
 
 # Create a combined lifespan to manage both session managers
 @contextlib.asynccontextmanager
